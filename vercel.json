@@ -1,0 +1,17 @@
+{
+  "version": 2,
+
+  "functions": {
+    "api/index.js": {
+      "regions": ["bom1"],
+      "includeFiles": "server/node_modules/**"
+    }
+  },
+
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.js"
+    }
+  ]
+}
