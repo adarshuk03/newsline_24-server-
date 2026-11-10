@@ -29,15 +29,15 @@ try {
 
 // ── Fonts ─────────────────────────────────────────────────────
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
+  path.join(__dirname, "../fonts/LondrinaSolid-Regular.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"),
+  path.join(__dirname, "../fonts/LondrinaSolid-Regular.ttf"),
   "English"
 );
 
-// Optional serif for the newspaper look (brand name + headline).
+// Optional serif (used for the small "NEWSLINE" label)
 const SERIF_CANDIDATES = [
   path.join(__dirname, "../fonts/Serif-Bold.ttf"),
   path.join(__dirname, "../fonts/PlayfairDisplay-Bold.ttf"),
@@ -57,7 +57,29 @@ for (const p of SERIF_CANDIDATES) {
   }
 }
 
-const HEAD_FONT = hasSerif ? "Headline, Malayalam, English" : "Malayalam, English";
+// Optional condensed bold sans for the headline (the look in your reference).
+// Drop ONE of these into server/fonts/ :  Anton-Regular.ttf  |  Oswald-Bold.ttf  |  BebasNeue-Regular.ttf
+const CONDENSED_CANDIDATES = [
+  path.join(__dirname, "../fonts/Anton-Regular.ttf"),
+  path.join(__dirname, "../fonts/Oswald-Bold.ttf"),
+  path.join(__dirname, "../fonts/BebasNeue-Regular.ttf"),
+];
+let hasCondensed = false;
+for (const p of CONDENSED_CANDIDATES) {
+  try {
+    if (fs.existsSync(p)) {
+      GlobalFonts.registerFromPath(p, "Condensed");
+      hasCondensed = true;
+      break;
+    }
+  } catch (e) {
+    console.warn("[Fonts] could not load", p, e.message);
+  }
+}
+
+const SERIF_CHAIN = hasSerif ? "Headline, Malayalam, English" : "Malayalam, English";
+const HEAD_FONT   = hasCondensed ? "Condensed, Malayalam, English" : SERIF_CHAIN;
+const BRAND_FONT  = SERIF_CHAIN;
 
 // ── Asset video path ─────────────────────────────────────────
 const FALLBACK_VIDEO_PATH =
@@ -69,22 +91,24 @@ const H            = 1350;          // 4:5 poster
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-const DEFAULT_CHANNEL = "Newsline 24";
+const DEFAULT_CHANNEL = "Newsline";
 
 // Layout
-const PAD           = 60;
-const BRAND_TOP     = 58;
-const BRAND_SIZE    = 66;
-const HEAD_BOTTOM   = 84;
-const HEAD_MAX_H    = Math.round(H * 0.34);
+const PAD           = 54;
+const HEAD_BOTTOM   = 70;                    // gap under the last headline line
+const HEAD_MAX_H    = Math.round(H * 0.36);
 const HEAD_START    = 80;
-const HEAD_MIN      = 44;
-const HEAD_LH       = 1.17;
+const HEAD_MIN      = 40;
+const HEAD_LH       = 1.24;                  // line pitch (leaves a small gap between bars)
+const BAR_PAD_X     = 14;                    // highlight bar side padding
+const BAR_COLOR     = "#ffe600";             // marker yellow
+const BAR_TEXT      = "#000000";
 
-// Photo area (the photo is shown in full, never cropped)
-const BG_COLOR      = "#080c16";   // plain dark background (no blur)
-const PHOTO_GAP     = 28;          // space between brand / headline and the photo
-const PHOTO_FADE    = 70;          // soft edge fade (px) at photo top & bottom
+const BRAND_SIZE    = 30;
+const BRAND_GAP     = 64;                    // distance from divider line up/down to headline
+
+const BG_COLOR      = "#080c16";
+const PHOTO_FADE    = 70;
 
 const MALAYALAM_BOLD_W = 0.055;
 
@@ -307,7 +331,7 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BACKGROUND — plain dark colour (no blur)
+// BACKGROUND
 // ═══════════════════════════════════════════════════════════════
 
 function drawBackground(ctx) {
@@ -316,39 +340,53 @@ function drawBackground(ctx) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PHOTO — the WHOLE image is shown (contain-fit, never cropped).
-//   It is placed in the free space between the brand and the headline,
-//   centred vertically, with a soft fade on its top/bottom edges so it
-//   blends into the dark background.
+// PHOTO
+//   Portrait-ish photo  → full-bleed, top-aligned (like the reference);
+//                         only the part hidden under the headline is cut.
+//   Landscape photo     → shown in FULL (fit to width), centred in the free
+//                         space above the headline, edges faded into the
+//                         dark background. Never cropped, never blurred.
 // ═══════════════════════════════════════════════════════════════
 
-async function drawPhoto(ctx, src, areaTop, areaBottom) {
+async function drawPhoto(ctx, src, areaBottom) {
   try {
-    const img    = await loadImage(src);
-    const areaH  = Math.max(100, areaBottom - areaTop);
-    const scale  = Math.min(W / img.width, areaH / img.height);
-    const dw     = img.width  * scale;
-    const dh     = img.height * scale;
-    const dx     = (W - dw) / 2;
-    const dy     = areaTop + (areaH - dh) / 2;
+    const img = await loadImage(src);
+    const portrait = img.width / img.height < 0.95;
 
-    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.clip();
 
-    // Soft fade on the top and bottom edges of the photo
-    const fade = Math.min(PHOTO_FADE, dh / 3);
+    if (portrait) {
+      const scale = Math.max(W / img.width, (H * 0.72) / img.height);
+      const dw = img.width  * scale;
+      const dh = img.height * scale;
+      ctx.drawImage(img, (W - dw) / 2, 0, dw, dh);
+    } else {
+      const areaH = Math.max(100, areaBottom);
+      const scale = Math.min(W / img.width, areaH / img.height);
+      const dw = img.width  * scale;
+      const dh = img.height * scale;
+      const dx = (W - dw) / 2;
+      const dy = (areaH - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
 
-    const gTop = ctx.createLinearGradient(0, dy, 0, dy + fade);
-    gTop.addColorStop(0, BG_COLOR);
-    gTop.addColorStop(1, "rgba(8,12,22,0)");
-    ctx.fillStyle = gTop;
-    ctx.fillRect(dx, dy, dw, fade);
+      const fade = Math.min(PHOTO_FADE, dh / 3);
+      const gTop = ctx.createLinearGradient(0, dy, 0, dy + fade);
+      gTop.addColorStop(0, BG_COLOR);
+      gTop.addColorStop(1, "rgba(8,12,22,0)");
+      ctx.fillStyle = gTop;
+      ctx.fillRect(dx, dy, dw, fade);
 
-    const gBot = ctx.createLinearGradient(0, dy + dh - fade, 0, dy + dh);
-    gBot.addColorStop(0, "rgba(8,12,22,0)");
-    gBot.addColorStop(1, BG_COLOR);
-    ctx.fillStyle = gBot;
-    ctx.fillRect(dx, dy + dh - fade, dw, fade);
+      const gBot = ctx.createLinearGradient(0, dy + dh - fade, 0, dy + dh);
+      gBot.addColorStop(0, "rgba(8,12,22,0)");
+      gBot.addColorStop(1, BG_COLOR);
+      ctx.fillStyle = gBot;
+      ctx.fillRect(dx, dy + dh - fade, dw, fade);
+    }
 
+    ctx.restore();
     return true;
   } catch (e) {
     console.warn("[Poster] main photo failed:", e.message);
@@ -356,85 +394,227 @@ async function drawPhoto(ctx, src, areaTop, areaBottom) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// BRAND — channel name, top-left
-// ═══════════════════════════════════════════════════════════════
+function drawFallbackBackground(ctx) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#14305f");
+  g.addColorStop(1, BG_COLOR);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
 
-function drawBrand(ctx, name) {
-  let size = BRAND_SIZE;
-  ctx.font = `${size}px ${HEAD_FONT}`;
-  const maxW = W * 0.62;
-  while (ctx.measureText(name).width > maxW && size > 30) {
-    size -= 2;
-    ctx.font = `${size}px ${HEAD_FONT}`;
-  }
-
-  ctx.save();
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "top";
-  ctx.fillStyle     = "#ffffff";
-  ctx.shadowColor   = "rgba(0,0,0,0.55)";
-  ctx.shadowBlur    = 14;
-  ctx.shadowOffsetY = 2;
-  ctx.fillText(name, PAD, BRAND_TOP);
-  ctx.restore();
-
-  return size; // used to place the photo below the brand
+// Dark gradient rising from the bottom so the headline is always readable
+function drawBottomFade(ctx, fromY) {
+  const g = ctx.createLinearGradient(0, fromY, 0, H);
+  g.addColorStop(0,    "rgba(0,0,0,0)");
+  g.addColorStop(0.35, "rgba(0,0,0,0.7)");
+  g.addColorStop(1,    "rgba(0,0,0,0.96)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, fromY, W, H - fromY);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HEADLINE — white, left-aligned, anchored to the bottom
+// DIVIDER + CHANNEL LABEL  (thin line, small spaced serif text in the middle)
 // ═══════════════════════════════════════════════════════════════
 
-function wrapWords(ctx, text, maxW) {
-  const lines = [];
-  let cur = "";
-  for (const word of text.split(" ").filter(Boolean)) {
-    const test = cur ? cur + " " + word : word;
-    if (cur && ctx.measureText(test).width > maxW) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
+function drawDividerLabel(ctx, label, y) {
+  const text = String(label || "").toUpperCase();
+
+  ctx.save();
+  ctx.font         = `${BRAND_SIZE}px ${BRAND_FONT}`;
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  try { ctx.letterSpacing = "5px"; } catch { /* older canvas builds */ }
+
+  const tw   = ctx.measureText(text).width;
+  const gap  = 26;
+  const left = W / 2 - tw / 2 - gap;
+  const right = W / 2 + tw / 2 + gap;
+
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(PAD, y);
+  ctx.lineTo(left, y);
+  ctx.moveTo(right, y);
+  ctx.lineTo(W - PAD, y);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.fillText(text, W / 2, y + 1);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEADLINE — centred, uppercase, with yellow "marker" bars on important words
+//
+//   How to mark important words (any of these, they can be combined):
+//     1. In the title text:         "Better roads lead to **more accidents**"
+//     2. newsItem.highlight array:  ["more accidents", "BJP MP"]  (or one string)
+// ═══════════════════════════════════════════════════════════════
+
+function normWord(w) {
+  return String(w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+// ── AUTO HIGHLIGHT ──────────────────────────────────────────────
+// Picks the most "important" stretch of the headline by itself.
+//   • Only the quoted statement is considered (the "...": SPEAKER NAME part is left plain)
+//   • Words are scored: numbers > long/rare words > normal words > filler words (0)
+//   • The best consecutive window (about 40% of the words) gets the yellow bar
+// Turn off per poster with  newsItem.autoHighlight = false
+const STOP_WORDS = new Set((
+  "a an the and or but if of to in on at by for with from as is are was were be been being " +
+  "it its this that these those when while than then so such not no do does did has have had " +
+  "will would can could may might shall should into over under about after before more most"
+).split(" "));
+
+function autoHighlight(words) {
+  if (words.length < 4) return;
+
+  // Eligible range: up to the closing quote mark (if the title is a quote), else everything
+  let end = words.length - 1;
+  for (let i = 1; i < words.length; i++) {
+    if (/[”"]$|[”"][:,;.]?$/.test(words[i].t)) { end = i; break; }
+  }
+  const n = end + 1;
+  if (n < 4) return;
+
+  const weight = words.slice(0, n).map((w) => {
+    const nw = normWord(w.t);
+    if (!nw) return 0;
+    if (/\d/.test(nw)) return 3;                     // numbers / figures
+    if (STOP_WORDS.has(nw.toLowerCase())) return 0;  // filler
+    if (nw.length >= 7) return 2;                    // long, meaningful words
+    return 1;
+  });
+
+  const len = Math.max(3, Math.min(8, Math.round(n * 0.4)));
+  if (len >= n) return;
+
+  let best = 0, bestScore = -1;
+  for (let i = 0; i + len <= n; i++) {
+    let s = 0;
+    for (let k = 0; k < len; k++) s += weight[i + k];
+    // never start or end the bar on a filler word
+    if (weight[i] === 0 || weight[i + len - 1] === 0) s -= 2;
+    if (s > bestScore) { bestScore = s; best = i; }
+  }
+  for (let k = 0; k < len; k++) words[best + k].hl = true;
+}
+
+function parseHeadline(title, highlight, auto = true) {
+  const words = [];
+  const parts = String(title || "").replace(/\s+/g, " ").split("**");
+  parts.forEach((part, i) => {
+    const on = i % 2 === 1;
+    part.split(" ").filter(Boolean).forEach((w) => words.push({ t: w.toUpperCase(), hl: on }));
+  });
+
+  const phrases = Array.isArray(highlight) ? highlight : highlight ? [highlight] : [];
+  for (const phrase of phrases) {
+    const pw = String(phrase).split(/\s+/).filter(Boolean).map(normWord);
+    if (!pw.length) continue;
+    for (let i = 0; i + pw.length <= words.length; i++) {
+      if (pw.every((p, k) => normWord(words[i + k].t) === p)) {
+        for (let k = 0; k < pw.length; k++) words[i + k].hl = true;
+      }
     }
   }
-  if (cur) lines.push(cur);
+
+  // Nothing marked by hand (no **..** and no highlight[]) → choose automatically
+  if (auto && !words.some((w) => w.hl)) autoHighlight(words);
+
+  return words;
+}
+
+function wrapTokens(ctx, words, maxW) {
+  const space = ctx.measureText(" ").width;
+  const lines = [];
+  let cur = [];
+  let curW = 0;
+  for (const w of words) {
+    const ww = ctx.measureText(w.t).width;
+    const add = cur.length ? space + ww : ww;
+    if (cur.length && curW + add > maxW) {
+      lines.push({ words: cur, width: curW });
+      cur = [{ ...w, w: ww }];
+      curW = ww;
+    } else {
+      cur.push({ ...w, w: ww });
+      curW += add;
+    }
+  }
+  if (cur.length) lines.push({ words: cur, width: curW });
   return lines;
 }
 
-function layoutHeadline(ctx, text, maxW, maxH) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
-
+function layoutHeadline(ctx, words, maxW, maxH) {
   for (let size = HEAD_START; size >= HEAD_MIN; size -= 2) {
     ctx.font = `${size}px ${HEAD_FONT}`;
-    const lines = wrapWords(ctx, clean, maxW);
+    const lines = wrapTokens(ctx, words, maxW);
     if (lines.length * Math.round(size * HEAD_LH) <= maxH) return { size, lines };
   }
-
   const size = HEAD_MIN;
   ctx.font = `${size}px ${HEAD_FONT}`;
   const maxLines = Math.max(1, Math.floor(maxH / Math.round(size * HEAD_LH)));
-  const lines = wrapWords(ctx, clean, maxW).slice(0, maxLines);
-  let last = lines[lines.length - 1] || "";
-  while (last.length > 1 && ctx.measureText(last + "…").width > maxW) last = last.slice(0, -1);
-  lines[lines.length - 1] = last.replace(/[\s,;:.\-–]+$/, "") + "…";
-  return { size, lines };
+  return { size, lines: wrapTokens(ctx, words, maxW).slice(0, maxLines) };
 }
 
-// Draws a laid-out headline; returns nothing. `top` is the y of the first line.
 function drawHeadlineLines(ctx, layout, top) {
   const { size, lines } = layout;
   const lineH = Math.round(size * HEAD_LH);
 
   ctx.save();
-  ctx.font          = `${size}px ${HEAD_FONT}`;
-  ctx.fillStyle     = "#ffffff";
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "top";
-  ctx.shadowColor   = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur    = 10;
-  ctx.shadowOffsetY = 2;
-  lines.forEach((ln, i) => ctx.fillText(ln, PAD, top + i * lineH));
+  ctx.font         = `${size}px ${HEAD_FONT}`;
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "alphabetic";
+  const space = ctx.measureText(" ").width;
+
+  lines.forEach((ln, i) => {
+    const cy     = top + i * lineH + lineH / 2;   // visual centre of this line
+    const base   = cy + size * 0.33;              // baseline so caps sit centred
+    let x        = (W - ln.width) / 2;
+
+    // 1) yellow bars behind runs of highlighted words
+    let k = 0;
+    let cx = x;
+    while (k < ln.words.length) {
+      if (ln.words[k].hl) {
+        const startX = cx;
+        let runW = 0;
+        let j = k;
+        while (j < ln.words.length && ln.words[j].hl) {
+          runW += ln.words[j].w + (j > k ? space : 0);
+          j++;
+        }
+        ctx.fillStyle = BAR_COLOR;
+        ctx.fillRect(startX - BAR_PAD_X, cy - size * 0.56, runW + BAR_PAD_X * 2, size * 1.12);
+        // advance cursor over the run
+        for (let m = k; m < j; m++) cx += ln.words[m].w + space;
+        k = j;
+      } else {
+        cx += ln.words[k].w + space;
+        k++;
+      }
+    }
+
+    // 2) the words themselves (black on yellow, white otherwise)
+    ln.words.forEach((w) => {
+      if (w.hl) {
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur  = 0;
+        ctx.fillStyle   = BAR_TEXT;
+      } else {
+        ctx.shadowColor   = "rgba(0,0,0,0.55)";
+        ctx.shadowBlur    = 8;
+        ctx.shadowOffsetY = 2;
+        ctx.fillStyle     = "#ffffff";
+      }
+      ctx.fillText(w.t, x, base);
+      x += w.w + space;
+    });
+  });
+
   ctx.restore();
 }
 
@@ -442,11 +622,19 @@ function drawHeadlineLines(ctx, layout, top) {
 // MAIN POSTER DRAW
 //
 // LAYOUT (4:5):
-//   1. Plain dark background
-//   2. Channel name, top-left
-//   3. FULL news photo (not cropped), centred between brand and headline
-//   4. White headline, bottom-left
+//   1. Photo (full-bleed for portrait photos, fully shown for landscape)
+//   2. Dark gradient from the bottom
+//   3. Thin divider with small "NEWSLINE" label
+//   4. Centred uppercase headline, important words on yellow bars
 //   5. Ad strip (unchanged pipeline), appended below the poster
+//
+//   newsItem options:
+//     title         headline (use **word** to mark important words)
+//     highlight     string | string[]  phrases to mark as important (optional –
+//                   if nothing is marked, the code highlights the key part itself)
+//     autoHighlight false to turn the automatic highlight off
+//     channelName   label on the divider (default "Newsline")
+//     showChannel   false to hide the divider + label
 // ═══════════════════════════════════════════════════════════════
 
 async function createNewsPoster(newsItem) {
@@ -522,46 +710,33 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. Background (plain dark, no blur) ─────────────────────
+  // ── 1. Background ───────────────────────────────────────────
   drawBackground(ctx);
 
-  // ── 2. Lay out the headline first so we know the free space ─
-  const headLayout = layoutHeadline(ctx, newsItem.title, W - PAD * 2, HEAD_MAX_H);
-  const headLineH  = Math.round(headLayout.size * HEAD_LH);
-  const headTotalH = headLayout.lines.length * headLineH;
-  const headTop    = H - HEAD_BOTTOM - headTotalH;
-
-  // ── 3. Brand (top-left) ─────────────────────────────────────
+  // ── 2. Headline layout first (we need its height) ───────────
   const showChannel = newsItem.showChannel !== false;
-  let brandBottom = 0;
-  if (showChannel) {
-    const usedSize = drawBrand(ctx, newsItem.channelName || DEFAULT_CHANNEL);
-    brandBottom = BRAND_TOP + usedSize;
-  }
+  const words       = parseHeadline(newsItem.title, newsItem.highlight, newsItem.autoHighlight !== false);
+  const headLayout  = layoutHeadline(ctx, words, W - PAD * 2 - BAR_PAD_X * 2, HEAD_MAX_H);
+  const headLineH   = Math.round(headLayout.size * HEAD_LH);
+  const headTotalH  = headLayout.lines.length * headLineH;
+  const headTop     = H - HEAD_BOTTOM - headTotalH;
+  const dividerY    = headTop - BRAND_GAP;
 
-  // ── 4. Photo — full image, centred in the free space ────────
-  const areaTop    = (showChannel ? brandBottom : 0) + PHOTO_GAP;
-  const areaBottom = headTop - PHOTO_GAP;
-  const hasPhoto   = await drawPhoto(ctx, newsItem.image, areaTop, areaBottom);
+  // ── 3. Photo ────────────────────────────────────────────────
+  const photoBottom = (showChannel ? dividerY : headTop) - 24;
+  const hasPhoto    = await drawPhoto(ctx, newsItem.image, photoBottom);
+  if (!hasPhoto) drawFallbackBackground(ctx);
 
-  if (!hasPhoto) {
-    // Photo failed → simple gradient so the poster still looks finished
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, "#14305f");
-    g.addColorStop(1, BG_COLOR);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-    if (showChannel) drawBrand(ctx, newsItem.channelName || DEFAULT_CHANNEL);
-  }
-
-  // ── 5. Headline (bottom-left) ───────────────────────────────
+  // ── 4. Gradient, divider + label, headline ──────────────────
+  drawBottomFade(ctx, Math.max(H * 0.35, (showChannel ? dividerY : headTop) - 320));
+  if (showChannel) drawDividerLabel(ctx, newsItem.channelName || DEFAULT_CHANNEL, dividerY);
   drawHeadlineLines(ctx, headLayout, headTop);
 
-  // ── 6. Reset ────────────────────────────────────────────────
+  // ── 5. Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
 
-  // ── 7. Ad strip ─────────────────────────────────────────────
+  // ── 6. Ad strip ─────────────────────────────────────────────
   if (!liveAdVideoUrl) {
     drawAdStrip(ctx, adImg, H, actualAdH);
   }
